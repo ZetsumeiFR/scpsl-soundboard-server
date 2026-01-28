@@ -22,17 +22,6 @@ export function setupPluginNamespace(io: SocketIOServer): void {
 
     console.log(`[Plugin] New connection: ${socket.id}`);
 
-    // Set a timeout for authentication
-    const authTimeout = setTimeout(() => {
-      if (!socketData.authenticated) {
-        socket.emit("message", {
-          type: "auth_error",
-          error: "Authentication timeout",
-        });
-        socket.disconnect();
-      }
-    }, 10000);
-
     socket.on("message", async (message: unknown) => {
       try {
         if (!isValidMessage(message)) {
@@ -45,7 +34,7 @@ export function setupPluginNamespace(io: SocketIOServer): void {
 
         switch (message.type) {
           case "auth":
-            await handleAuth(socket, socketData, message as PluginAuthMessage, authTimeout);
+            await handleAuth(socket, socketData, message as PluginAuthMessage);
             break;
 
           case "get_sounds":
@@ -72,7 +61,6 @@ export function setupPluginNamespace(io: SocketIOServer): void {
     });
 
     socket.on("disconnect", (reason) => {
-      clearTimeout(authTimeout);
       if (socketData.steamId64) {
         connectedPlayers.delete(socketData.steamId64);
         console.log(
@@ -99,11 +87,8 @@ function isValidMessage(message: unknown): message is { type: string } {
 async function handleAuth(
   socket: Socket,
   socketData: PluginSocketData,
-  message: PluginAuthMessage,
-  authTimeout: NodeJS.Timeout
+  message: PluginAuthMessage
 ): Promise<void> {
-  clearTimeout(authTimeout);
-
   const { steamId64 } = message;
 
   if (!steamId64 || typeof steamId64 !== "string") {
