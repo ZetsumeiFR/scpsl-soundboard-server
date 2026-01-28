@@ -1,14 +1,30 @@
 import { RateLimiterRedis, RateLimiterRes } from "rate-limiter-flexible";
 import type { Request, Response, NextFunction } from "express";
-import { getRedisClient } from "../config/redis.js";
+import { Redis } from "ioredis";
+import { env } from "../config/env.js";
 
 let uploadRateLimiter: RateLimiterRedis | null = null;
+let ioRedisClient: Redis | null = null;
 
 async function getUploadRateLimiter(): Promise<RateLimiterRedis> {
   if (!uploadRateLimiter) {
-    const redisClient = await getRedisClient();
+    // Use ioredis for rate-limiter-flexible (required for v9+ compatibility)
+    ioRedisClient = new Redis(env.redisUrl, {
+      enableOfflineQueue: false,
+      maxRetriesPerRequest: 1,
+    });
+
+    // Wait for ioredis to be ready before creating rate limiter
+    // (rate-limiter-flexible registers custom Lua commands that require a ready client)
+    await new Promise<void>((resolve, reject) => {
+      ioRedisClient!.on("ready", resolve);
+      ioRedisClient!.on("error", (err) => {
+        reject(new Error(`Redis connection failed: ${err.message}`));
+      });
+    });
+
     uploadRateLimiter = new RateLimiterRedis({
-      storeClient: redisClient,
+      storeClient: ioRedisClient,
       keyPrefix: "ratelimit:upload",
       points: 5, // 5 uploads
       duration: 60, // per minute

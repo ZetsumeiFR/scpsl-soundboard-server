@@ -71,12 +71,18 @@ export function setupPluginNamespace(io: SocketIOServer): void {
       }
     });
 
-    socket.on("disconnect", () => {
+    socket.on("disconnect", (reason) => {
       clearTimeout(authTimeout);
       if (socketData.steamId64) {
         connectedPlayers.delete(socketData.steamId64);
+        console.log(
+          `[Plugin] Disconnected: ${socketData.username ?? socketData.steamId64} (${socket.id}) - reason: ${reason}`
+        );
+      } else {
+        console.log(
+          `[Plugin] Disconnected (unauthenticated): ${socket.id} - reason: ${reason}`
+        );
       }
-      console.log(`[Plugin] Disconnected: ${socket.id}`);
     });
   });
 }

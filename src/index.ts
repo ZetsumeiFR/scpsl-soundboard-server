@@ -43,8 +43,8 @@ async function bootstrap() {
 
   // Serve static client files in production
   if (env.isProd) {
-    // Client build is at ../client/dist relative to server root (apps/server)
-    const clientDistPath = join(__dirname, "../../../client/dist");
+    // Client build is at ../../scp-soundboard-client/dist relative to dist/
+    const clientDistPath = join(__dirname, "../../scp-soundboard-client/dist");
 
     if (existsSync(clientDistPath)) {
       console.log(`Serving static files from: ${clientDistPath}`);
