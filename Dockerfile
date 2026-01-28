@@ -21,7 +21,7 @@ COPY --from=install /temp/dev/node_modules node_modules
 COPY . .
 
 # Generate Prisma client
-RUN bunx prisma generate
+RUN bun run db:generate
 
 # Build TypeScript
 RUN bun run build
