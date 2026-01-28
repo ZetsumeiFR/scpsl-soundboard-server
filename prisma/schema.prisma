@@ -1,0 +1,49 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  steamId64 String   @unique @map("steam_id_64")
+  username  String
+  avatarUrl String?  @map("avatar_url")
+  isAdmin   Boolean  @default(false) @map("is_admin")
+  isBanned  Boolean  @default(false) @map("is_banned")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  sounds Sound[]
+
+  @@map("users")
+}
+
+model Sound {
+  id        String   @id @default(uuid())
+  name      String   @db.VarChar(32)
+  filename  String   @unique
+  duration  Float    // in seconds
+  size      Int      // in bytes (after conversion)
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("sounds")
+}
+
+model Setting {
+  key       String   @id @db.VarChar(64)
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
