@@ -28,22 +28,26 @@ export interface SoundInfo {
 
 export interface AuthSuccessResponse {
   type: "auth_success";
+  steamId64: string;
   username: string;
   sounds: SoundInfo[];
 }
 
 export interface AuthErrorResponse {
   type: "auth_error";
+  steamId64: string;
   error: string;
 }
 
 export interface SoundsListResponse {
   type: "sounds_list";
+  steamId64: string;
   sounds: SoundInfo[];
 }
 
 export interface SoundDataResponse {
   type: "sound_data";
+  steamId64: string;
   soundId: string;
   name: string;
   duration: number;
@@ -52,12 +56,14 @@ export interface SoundDataResponse {
 
 export interface SoundErrorResponse {
   type: "sound_error";
+  steamId64: string;
   soundId: string;
   error: string;
 }
 
 export interface SoundsUpdatedNotification {
   type: "sounds_updated";
+  steamId64: string;
   sounds: SoundInfo[];
 }
 
@@ -71,8 +77,6 @@ export type ServerMessage =
 
 // Socket data stored per connection
 export interface PluginSocketData {
-  authenticated: boolean;
-  userId?: string;
-  steamId64?: string;
-  username?: string;
+  // Map of steamId64 → { userId, username } for all authenticated players on this socket
+  authenticatedPlayers: Map<string, { userId: string; username: string }>;
 }

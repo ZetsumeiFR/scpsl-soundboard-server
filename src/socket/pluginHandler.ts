@@ -17,7 +17,7 @@ export function setupPluginNamespace(io: SocketIOServer): void {
 
   pluginNamespace.on("connection", (socket: Socket) => {
     const socketData: PluginSocketData = {
-      authenticated: false,
+      authenticatedPlayers: new Map(),
     };
 
     console.log(`[Plugin] New connection: ${socket.id}`);
@@ -61,12 +61,18 @@ export function setupPluginNamespace(io: SocketIOServer): void {
     });
 
     socket.on("disconnect", (reason) => {
-      if (socketData.steamId64) {
-        connectedPlayers.delete(socketData.steamId64);
+      // Clean up all players authenticated on this socket
+      for (const [steamId64, playerInfo] of socketData.authenticatedPlayers) {
+        // Only remove from connectedPlayers if this socket is still the one registered
+        if (connectedPlayers.get(steamId64) === socket) {
+          connectedPlayers.delete(steamId64);
+        }
         console.log(
-          `[Plugin] Disconnected: ${socketData.username ?? socketData.steamId64} (${socket.id}) - reason: ${reason}`
+          `[Plugin] Disconnected: ${playerInfo.username} (${socket.id}) - reason: ${reason}`
         );
-      } else {
+      }
+
+      if (socketData.authenticatedPlayers.size === 0) {
         console.log(
           `[Plugin] Disconnected (unauthenticated): ${socket.id} - reason: ${reason}`
         );
@@ -94,9 +100,9 @@ async function handleAuth(
   if (!steamId64 || typeof steamId64 !== "string") {
     socket.emit("message", {
       type: "auth_error",
+      steamId64: steamId64 ?? "",
       error: "Invalid SteamID64",
     });
-    socket.disconnect();
     return;
   }
 
@@ -118,36 +124,37 @@ async function handleAuth(
   if (!user) {
     socket.emit("message", {
       type: "auth_error",
+      steamId64,
       error: "User not found. Please login via web panel first.",
     });
-    socket.disconnect();
     return;
   }
 
   if (user.isBanned) {
     socket.emit("message", {
       type: "auth_error",
+      steamId64,
       error: "Your account is banned",
     });
-    socket.disconnect();
     return;
   }
 
-  // Disconnect any existing connection for this player
+  // Disconnect any existing connection for this player (from a different socket)
   const existingSocket = connectedPlayers.get(steamId64);
-  if (existingSocket) {
+  if (existingSocket && existingSocket !== socket) {
     existingSocket.emit("message", {
       type: "auth_error",
+      steamId64,
       error: "Connected from another location",
     });
     existingSocket.disconnect();
   }
 
   // Store connection
-  socketData.authenticated = true;
-  socketData.userId = user.id;
-  socketData.steamId64 = user.steamId64;
-  socketData.username = user.username;
+  socketData.authenticatedPlayers.set(steamId64, {
+    userId: user.id,
+    username: user.username,
+  });
   connectedPlayers.set(steamId64, socket);
 
   const sounds: SoundInfo[] = user.sounds.map((s) => ({
@@ -158,6 +165,7 @@ async function handleAuth(
 
   socket.emit("message", {
     type: "auth_success",
+    steamId64,
     username: user.username,
     sounds,
   });
@@ -169,32 +177,28 @@ async function handleGetSounds(
   socket: Socket,
   socketData: PluginSocketData
 ): Promise<void> {
-  if (!socketData.authenticated || !socketData.userId) {
-    socket.emit("message", {
-      type: "auth_error",
-      error: "Not authenticated",
+  // Send sounds for all authenticated players on this socket
+  for (const [steamId64, playerInfo] of socketData.authenticatedPlayers) {
+    const sounds = await prisma.sound.findMany({
+      where: { userId: playerInfo.userId },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        name: true,
+        duration: true,
+      },
     });
-    return;
+
+    socket.emit("message", {
+      type: "sounds_list",
+      steamId64,
+      sounds: sounds.map((s) => ({
+        id: s.id,
+        name: s.name,
+        duration: s.duration,
+      })),
+    });
   }
-
-  const sounds = await prisma.sound.findMany({
-    where: { userId: socketData.userId },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      name: true,
-      duration: true,
-    },
-  });
-
-  socket.emit("message", {
-    type: "sounds_list",
-    sounds: sounds.map((s) => ({
-      id: s.id,
-      name: s.name,
-      duration: s.duration,
-    })),
-  });
 }
 
 async function handlePlaySound(
@@ -202,41 +206,52 @@ async function handlePlaySound(
   socketData: PluginSocketData,
   message: PluginPlaySoundMessage
 ): Promise<void> {
-  if (!socketData.authenticated || !socketData.userId || !socketData.steamId64) {
-    socket.emit("message", {
-      type: "auth_error",
-      error: "Not authenticated",
-    });
-    return;
-  }
-
   const { soundId } = message;
 
-  // Find the sound
-  const sound = await prisma.sound.findFirst({
-    where: {
-      id: soundId,
-      userId: socketData.userId,
+  // Find which authenticated player owns this sound
+  const sound = await prisma.sound.findUnique({
+    where: { id: soundId },
+    select: {
+      id: true,
+      name: true,
+      filename: true,
+      duration: true,
+      userId: true,
+      user: { select: { steamId64: true } },
     },
   });
 
   if (!sound) {
     socket.emit("message", {
       type: "sound_error",
+      steamId64: "",
       soundId,
       error: "Sound not found",
     });
     return;
   }
 
+  // Verify the player is authenticated on this socket
+  const playerInfo = socketData.authenticatedPlayers.get(sound.user.steamId64);
+  if (!playerInfo || playerInfo.userId !== sound.userId) {
+    socket.emit("message", {
+      type: "sound_error",
+      steamId64: sound.user.steamId64,
+      soundId,
+      error: "Not authenticated",
+    });
+    return;
+  }
+
   // Read the audio file
   try {
-    const filePath = await getSoundFilePath(socketData.steamId64, sound.filename);
+    const filePath = await getSoundFilePath(sound.user.steamId64, sound.filename);
     const audioBuffer = await fs.readFile(filePath);
     const audioBase64 = audioBuffer.toString("base64");
 
     socket.emit("message", {
       type: "sound_data",
+      steamId64: sound.user.steamId64,
       soundId: sound.id,
       name: sound.name,
       duration: sound.duration,
@@ -246,6 +261,7 @@ async function handlePlaySound(
     console.error(`[Plugin] Error reading sound file:`, error);
     socket.emit("message", {
       type: "sound_error",
+      steamId64: sound.user.steamId64,
       soundId,
       error: "Failed to read sound file",
     });
@@ -275,6 +291,7 @@ export async function notifyPlayerSoundsUpdated(steamId64: string): Promise<void
 
   socket.emit("message", {
     type: "sounds_updated",
+    steamId64,
     sounds: user.sounds.map((s) => ({
       id: s.id,
       name: s.name,
