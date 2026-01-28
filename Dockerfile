@@ -15,13 +15,18 @@ RUN mkdir -p /temp/prod
 COPY package.json bun.lock /temp/prod/
 RUN cd /temp/prod && bun install --frozen-lockfile --production
 
-# Build stage
-FROM base AS build
+# Build stage - use Node for Prisma CLI compatibility
+FROM node:22-slim AS build
+WORKDIR /app
+
+# Install bun in build stage
+RUN npm install -g bun
+
 COPY --from=install /temp/dev/node_modules node_modules
 COPY . .
 
-# Generate Prisma client
-RUN bun run db:generate
+# Generate Prisma client (using npx for WASM compatibility)
+RUN npx prisma generate
 
 # Build TypeScript
 RUN bun run build
