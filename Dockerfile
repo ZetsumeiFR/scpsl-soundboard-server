@@ -1,82 +1,66 @@
-# syntax=docker/dockerfile:1
-
-# ============================================
-# Base image with Bun and runtime dependencies
-# ============================================
-FROM oven/bun:1.3.7-alpine AS base
-
+# Bun base image
+FROM oven/bun:1 AS base
 WORKDIR /app
 
-# Install runtime dependencies (ffmpeg for audio processing)
-RUN apk add --no-cache ffmpeg
+# Install dependencies into temp directory (cached)
+FROM base AS install
 
-# ============================================
-# Dependencies stage
-# ============================================
-FROM base AS deps
+# Install dev dependencies (needed for build + prisma generate)
+RUN mkdir -p /temp/dev
+COPY package.json bun.lock /temp/dev/
+RUN cd /temp/dev && bun install --frozen-lockfile
 
-# Install build dependencies for native modules
-RUN apk add --no-cache python3 make g++ nodejs npm
+# Install production dependencies only
+RUN mkdir -p /temp/prod
+COPY package.json bun.lock /temp/prod/
+RUN cd /temp/prod && bun install --frozen-lockfile --production
 
-# Copy package files
-COPY package.json bun.lock ./
-
-# Install dependencies (ignore scripts to avoid Prisma/Bun issues)
-RUN bun install --frozen-lockfile --ignore-scripts
-
-# ============================================
-# Prisma generation stage
-# ============================================
-FROM deps AS prisma
-
-# Copy prisma schema
-COPY prisma ./prisma/
-
-# Generate Prisma client using npx (more stable than bun for this)
-RUN npx --yes prisma@7.3.0 generate
-
-# ============================================
-# Builder stage
-# ============================================
-FROM prisma AS builder
-
-# Copy source code
+# Build stage
+FROM base AS build
+COPY --from=install /temp/dev/node_modules node_modules
 COPY . .
+
+# Generate Prisma client
+RUN bunx prisma generate
 
 # Build TypeScript
 RUN bun run build
 
-# ============================================
-# Production stage
-# ============================================
-FROM base AS production
+# Production image
+FROM base AS release
 
-# Create non-root user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
+# Install ffmpeg for audio conversion
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy dependencies
-COPY --from=builder /app/node_modules ./node_modules
+# Copy production dependencies
+COPY --from=install /temp/prod/node_modules node_modules
 
-# Copy built server (dist/generated contains compiled Prisma client)
-COPY --from=builder /app/dist ./dist
+# Copy built application
+COPY --from=build /app/dist dist
 
-# Copy Prisma schema for migrations
-COPY --from=builder /app/prisma ./prisma
+# Copy Prisma schema (needed for migrations)
+COPY --from=build /app/prisma prisma
 
-# Create uploads directory with proper permissions
-RUN mkdir -p /app/uploads && \
-    chown -R nodejs:nodejs /app
+# Copy generated Prisma client
+COPY --from=build /app/src/generated/prisma dist/generated/prisma
 
-# Switch to non-root user
-USER nodejs
+# Copy package.json (needed for bun to resolve modules)
+COPY package.json .
+
+# Create uploads directory
+RUN mkdir -p uploads && chown bun:bun uploads
+
+# Run as non-root user
+USER bun
 
 # Expose port
-EXPOSE 3001
+EXPOSE 3004
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget -qO- http://localhost:3001/health || exit 1
+    CMD curl -f http://localhost:3004/health || exit 1
 
-# Start server
-CMD ["bun", "dist/index.js"]
+# Start the application
+CMD ["bun", "run", "dist/index.js"]

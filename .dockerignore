@@ -1,0 +1,39 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Documentation
+README.md
+CLAUDE.md
+LICENSE
+
+# Generated files (will be regenerated in build)
+src/generated
+
+# Uploads (should be mounted as volume)
+uploads
+
+# Misc
+*.log
+coverage
+.DS_Store
