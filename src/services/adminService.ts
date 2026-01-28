@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { prisma } from "../config/db.js";
 import { UPLOAD_CONFIG } from "../config/upload.js";
-import { invalidateQuotaCache } from "./quotaCache.js";
 
 export interface AdminUser {
   id: string;
@@ -298,9 +297,6 @@ export async function deleteUserWithSounds(
   // Delete user (cascade will delete sounds from DB)
   await prisma.user.delete({ where: { id: userId } });
 
-  // Invalidate quota cache
-  await invalidateQuotaCache(userId);
-
   return {
     success: true,
     deletedSoundsCount: soundsCount,
@@ -342,9 +338,6 @@ export async function deleteAnySound(soundId: string): Promise<DeleteSoundResult
 
   // Delete from database
   await prisma.sound.delete({ where: { id: soundId } });
-
-  // Invalidate quota cache
-  await invalidateQuotaCache(sound.userId);
 
   return { success: true };
 }

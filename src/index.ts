@@ -4,7 +4,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import { env } from "./config/env.js";
-import { getRedisClient, closeRedisClient } from "./config/redis.js";
+import { pool } from "./config/db.js";
 import { configurePassport, passport } from "./config/passport.js";
 import { createSessionMiddleware } from "./middleware/session.js";
 import { corsMiddleware } from "./middleware/cors.js";
@@ -24,9 +24,6 @@ async function bootstrap() {
   // Create HTTP server explicitly for Socket.IO
   const httpServer = createServer(app);
 
-  // Get Redis client
-  const redisClient = await getRedisClient();
-
   // Configure Passport
   configurePassport();
 
@@ -34,7 +31,7 @@ async function bootstrap() {
   app.use(corsMiddleware);
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
-  app.use(createSessionMiddleware(redisClient));
+  app.use(createSessionMiddleware(pool));
   app.use(passport.initialize());
   app.use(passport.session());
 
@@ -73,7 +70,7 @@ async function bootstrap() {
   const shutdown = async () => {
     console.log("\nShutting down gracefully...");
     httpServer.close(async () => {
-      await closeRedisClient();
+      await pool.end();
       console.log("Server closed");
       process.exit(0);
     });

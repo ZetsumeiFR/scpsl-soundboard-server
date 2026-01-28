@@ -3,7 +3,7 @@ import pg from "pg";
 import { PrismaClient } from "../generated/prisma/client.js";
 import { env } from "./env.js";
 
-const pool = new pg.Pool({
+export const pool = new pg.Pool({
   connectionString: env.databaseUrl,
 });
 

@@ -1,4 +1,3 @@
-import { getRedisClient } from "../config/redis.js";
 import { prisma } from "../config/db.js";
 import {
   DEFAULT_SETTINGS,
@@ -8,23 +7,33 @@ import {
   type PartialSettings,
 } from "../schemas/settings.js";
 
-const SETTINGS_CACHE_KEY = "settings:all";
-const SETTINGS_TTL_SECONDS = 300; // 5 minutes
+const SETTINGS_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+let cachedSettings: Settings | null = null;
+let cacheTimestamp = 0;
+
+function getCached(): Settings | null {
+  if (cachedSettings && Date.now() - cacheTimestamp < SETTINGS_TTL_MS) {
+    return cachedSettings;
+  }
+  return null;
+}
+
+function setCache(settings: Settings): void {
+  cachedSettings = settings;
+  cacheTimestamp = Date.now();
+}
+
+function invalidateCache(): void {
+  cachedSettings = null;
+  cacheTimestamp = 0;
+}
 
 export async function getSettings(): Promise<Settings> {
-  // 1. Try Redis cache
-  try {
-    const redis = await getRedisClient();
-    const cached = await redis.get(SETTINGS_CACHE_KEY);
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      const validated = settingsSchema.safeParse(parsed);
-      if (validated.success) {
-        return validated.data;
-      }
-    }
-  } catch (error) {
-    console.warn("Failed to get cached settings:", error);
+  // 1. Try in-memory cache
+  const cached = getCached();
+  if (cached) {
+    return cached;
   }
 
   // 2. Try database
@@ -42,7 +51,7 @@ export async function getSettings(): Promise<Settings> {
 
       if (validated.success) {
         // Cache the result
-        await cacheSettings(validated.data);
+        setCache(validated.data);
         return validated.data;
       }
     }
@@ -93,11 +102,9 @@ export async function updateSettings(
       )
     );
 
-    // Invalidate cache
-    await invalidateSettingsCache();
-
-    // Cache the new settings
-    await cacheSettings(fullValidation.data);
+    // Update cache with new settings
+    invalidateCache();
+    setCache(fullValidation.data);
 
     return {
       success: true,
@@ -109,27 +116,5 @@ export async function updateSettings(
       success: false,
       error: "Erreur lors de la mise à jour des paramètres",
     };
-  }
-}
-
-async function cacheSettings(settings: Settings): Promise<void> {
-  try {
-    const redis = await getRedisClient();
-    await redis.setEx(
-      SETTINGS_CACHE_KEY,
-      SETTINGS_TTL_SECONDS,
-      JSON.stringify(settings)
-    );
-  } catch (error) {
-    console.warn("Failed to cache settings:", error);
-  }
-}
-
-export async function invalidateSettingsCache(): Promise<void> {
-  try {
-    const redis = await getRedisClient();
-    await redis.del(SETTINGS_CACHE_KEY);
-  } catch (error) {
-    console.warn("Failed to invalidate settings cache:", error);
   }
 }

@@ -1,16 +1,16 @@
-import { RedisStore } from "connect-redis";
+import connectPgSimple from "connect-pg-simple";
 import session from "express-session";
-import type { RedisClientType } from "redis";
+import type pg from "pg";
 import { env } from "../config/env.js";
 
-export function createSessionMiddleware(redisClient: RedisClientType) {
-  const redisStore = new RedisStore({
-    client: redisClient,
-    prefix: "scp-soundboard:",
-  });
+export function createSessionMiddleware(pool: pg.Pool) {
+  const PgStore = connectPgSimple(session);
 
   return session({
-    store: redisStore,
+    store: new PgStore({
+      pool,
+      createTableIfMissing: true,
+    }),
     secret: env.sessionSecret,
     resave: false,
     saveUninitialized: false,

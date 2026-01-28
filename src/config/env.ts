@@ -12,9 +12,6 @@ export const env = {
   // Database
   databaseUrl: requireEnv("DATABASE_URL"),
 
-  // Redis
-  redisUrl: requireEnv("REDIS_URL"),
-
   // Steam
   steamApiKey: requireEnv("STEAM_API_KEY"),
 

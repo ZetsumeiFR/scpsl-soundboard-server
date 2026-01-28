@@ -5,11 +5,6 @@ import { prisma } from "../config/db.js";
 import { UPLOAD_CONFIG } from "../config/upload.js";
 import { convertToOggOpus } from "./ffmpeg.js";
 import { validateAudioFile, validateSoundName } from "./audioValidator.js";
-import {
-  getCachedQuotaCount,
-  setCachedQuotaCount,
-  invalidateQuotaCache,
-} from "./quotaCache.js";
 import { getSettings } from "./settingsService.js";
 import type { SoundDTO } from "../types/sound.js";
 import type { SoundModel } from "../generated/prisma/models.js";
@@ -36,19 +31,9 @@ async function ensureUserDir(steamId64: string): Promise<string> {
 }
 
 export async function getUserSoundCount(userId: string): Promise<number> {
-  // Check cache first
-  const cached = await getCachedQuotaCount(userId);
-  if (cached !== null) {
-    return cached;
-  }
-
-  // Query database and cache the result
-  const count = await prisma.sound.count({
+  return prisma.sound.count({
     where: { userId },
   });
-
-  await setCachedQuotaCount(userId, count);
-  return count;
 }
 
 export async function canUserUpload(userId: string): Promise<boolean> {
@@ -209,9 +194,6 @@ export async function createSound(
       },
     });
 
-    // 10. Invalidate quota cache
-    await invalidateQuotaCache(userId);
-
     return {
       success: true,
       sound: toSoundDTO(sound),
@@ -305,9 +287,6 @@ export async function deleteSound(
   await prisma.sound.delete({
     where: { id: soundId },
   });
-
-  // 4. Invalidate quota cache
-  await invalidateQuotaCache(userId);
 
   return { success: true };
 }
