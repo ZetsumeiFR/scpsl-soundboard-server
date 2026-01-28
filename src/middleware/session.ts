@@ -19,7 +19,8 @@ export function createSessionMiddleware(redisClient: RedisClientType) {
       secure: env.isProd,
       httpOnly: true,
       maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-      sameSite: env.isProd ? "strict" : "lax",
+      sameSite: env.isProd ? "none" : "lax",
+      domain: env.isProd ? ".zetsumei.xyz" : undefined,
     },
   });
 }
