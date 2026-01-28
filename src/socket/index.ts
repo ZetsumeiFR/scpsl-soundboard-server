@@ -8,11 +8,26 @@ let io: SocketIOServer | null = null;
 export function initializeSocketIO(httpServer: HttpServer): SocketIOServer {
   io = new SocketIOServer(httpServer, {
     cors: {
-      origin: [env.frontendUrl],
+      origin: (origin, callback) => {
+        // Non-browser clients (C# plugin) don't send an Origin header
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
+        if (origin === env.frontendUrl) {
+          callback(null, true);
+          return;
+        }
+        callback(new Error("CORS origin not allowed"), false);
+      },
       credentials: true,
     },
     path: "/socket.io",
     transports: ["websocket", "polling"],
+  });
+
+  io.engine.on("connection_error", (err) => {
+    console.error(`[Engine.IO] Connection error (code ${err.code}): ${err.message}`);
   });
 
   // Setup plugin namespace for LabAPI plugin connections
