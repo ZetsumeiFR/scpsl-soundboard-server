@@ -58,9 +58,8 @@ RUN addgroup -g 1001 -S nodejs && \
 # Copy dependencies
 COPY --from=builder /app/node_modules ./node_modules
 
-# Copy built server
+# Copy built server (dist/generated contains compiled Prisma client)
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/src/generated ./src/generated
 
 # Copy Prisma schema for migrations
 COPY --from=builder /app/prisma ./prisma
