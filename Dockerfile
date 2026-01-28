@@ -65,7 +65,7 @@ EXPOSE 3004
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3004/health || exit 1
+    CMD bun -e "fetch('http://localhost:3004/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
 
 # Start the application
 CMD ["bun", "run", "dist/index.js"]
