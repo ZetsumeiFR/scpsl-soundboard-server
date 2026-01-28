@@ -20,7 +20,7 @@ export function createSessionMiddleware(redisClient: RedisClientType) {
       httpOnly: true,
       maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
       sameSite: env.isProd ? "none" : "lax",
-      domain: env.isProd ? ".zetsumei.xyz" : undefined,
+      domain: env.isProd ? ".soundboard.zetsumei.xyz" : undefined,
     },
   });
 }

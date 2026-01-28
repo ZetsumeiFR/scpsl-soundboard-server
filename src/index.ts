@@ -16,6 +16,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 async function bootstrap() {
   const app = express();
 
+  // Trust proxy in production (required for secure cookies behind reverse proxy)
+  if (env.isProd) {
+    app.set("trust proxy", 1);
+  }
+
   // Create HTTP server explicitly for Socket.IO
   const httpServer = createServer(app);
 
