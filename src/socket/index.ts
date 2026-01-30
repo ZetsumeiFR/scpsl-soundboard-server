@@ -24,6 +24,7 @@ export function initializeSocketIO(httpServer: HttpServer): SocketIOServer {
     },
     path: "/socket.io",
     transports: ["websocket", "polling"],
+    pingTimeout: 30000,
   });
 
   io.engine.on("connection_error", (err) => {

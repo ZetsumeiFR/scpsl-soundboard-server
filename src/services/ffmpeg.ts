@@ -59,7 +59,7 @@ export function convertToOggOpus(
     ffmpeg(inputPath)
       .audioCodec("libopus")
       .audioBitrate("64k")
-      .audioChannels(2)
+      .audioChannels(1)
       .audioFrequency(48000)
       .format("ogg")
       .on("error", (err) => {

@@ -78,6 +78,15 @@ async function bootstrap() {
 
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
+
+  process.on("uncaughtException", (err) => {
+    console.error("[FATAL] Uncaught exception:", err);
+    shutdown();
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    console.error("[FATAL] Unhandled rejection:", reason);
+  });
 }
 
 bootstrap().catch((err) => {

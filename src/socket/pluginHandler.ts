@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import type { Socket, Server as SocketIOServer } from "socket.io";
 import { prisma } from "../config/db.js";
 import { getSoundFilePath } from "../services/soundService.js";
@@ -221,7 +222,7 @@ async function handlePlaySound(
     },
   });
 
-  if (!sound) {
+  if (!sound || !sound.user) {
     socket.emit("message", {
       type: "sound_error",
       steamId64: "",
@@ -231,12 +232,14 @@ async function handlePlaySound(
     return;
   }
 
+  const ownerSteamId64 = sound.user.steamId64;
+
   // Verify the player is authenticated on this socket
-  const playerInfo = socketData.authenticatedPlayers.get(sound.user.steamId64);
+  const playerInfo = socketData.authenticatedPlayers.get(ownerSteamId64);
   if (!playerInfo || playerInfo.userId !== sound.userId) {
     socket.emit("message", {
       type: "sound_error",
-      steamId64: sound.user.steamId64,
+      steamId64: ownerSteamId64,
       soundId,
       error: "Not authenticated",
     });
@@ -245,13 +248,24 @@ async function handlePlaySound(
 
   // Read the audio file
   try {
-    const filePath = await getSoundFilePath(sound.user.steamId64, sound.filename);
+    const filePath = await getSoundFilePath(ownerSteamId64, sound.filename);
+
+    if (!existsSync(filePath)) {
+      console.error(`[Plugin] Sound file missing on disk: ${filePath}`);
+      socket.emit("message", {
+        type: "sound_error",
+        steamId64: ownerSteamId64,
+        soundId,
+        error: "Sound file not found on server",
+      });
+      return;
+    }
     const audioBuffer = await fs.readFile(filePath);
     const audioBase64 = audioBuffer.toString("base64");
 
     socket.emit("message", {
       type: "sound_data",
-      steamId64: sound.user.steamId64,
+      steamId64: ownerSteamId64,
       soundId: sound.id,
       name: sound.name,
       duration: sound.duration,
@@ -261,7 +275,7 @@ async function handlePlaySound(
     console.error(`[Plugin] Error reading sound file:`, error);
     socket.emit("message", {
       type: "sound_error",
-      steamId64: sound.user.steamId64,
+      steamId64: ownerSteamId64,
       soundId,
       error: "Failed to read sound file",
     });
